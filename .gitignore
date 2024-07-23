@@ -1,3 +1,6 @@
-.venv
+# VSC
 .vscode
+
+# Python
+.venv
 __pycache__

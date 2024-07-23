@@ -14,8 +14,8 @@ class Base:
 class Ingredient(Base):
     __tablename__ = 'ingredient'
 
-    name = Column(String(64), nullable=False)
-    count = Column(Integer, nullable=False)
+    name = Column(String(64), nullable=False, unique=True)
+    available = Column(Integer, default=0, nullable=False)
 
     positions = relationship('Position', secondary='position_xref_ingredient', back_populates='ingredients', uselist=True)
 
@@ -23,9 +23,9 @@ class Ingredient(Base):
 class Position(Base):
     __tablename__ = 'position'
 
-    name = Column(String(64), nullable=False)
+    name = Column(String(64), nullable=False, unique=True)
     description = Column(String(512), nullable=True)
-    is_changable = Column(Boolean, default=False)
+    is_changable = Column(Boolean, default=False, nullable=False)
     cost = Column(Integer, nullable=False)
 
     ingredients = relationship('Ingredient', secondary='position_xref_ingredient', back_populates='positions', uselist=True)

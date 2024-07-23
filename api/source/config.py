@@ -1,6 +1,7 @@
 from functools import lru_cache
 
-from pydantic import PostgresDsn, field_validator, FieldValidationInfo
+from pydantic import PostgresDsn, field_validator
+from pydantic_core.core_schema import FieldValidationInfo
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
