@@ -22,13 +22,14 @@ async def add_new_position(data: PositionPost, session: AsyncSession = Depends(g
         raise HTTPException(400, "position with such name already exist")
     
     ingredients: list[tuple[Ingredient, int]] = []
-    for ingredient_data in data.ingredients_id:
-        ingredient = await session.get(Ingredient, ingredient_data.ingredient_id)
+    if data.ingredients_id is not None and len(data.ingredients_id):
+        for ingredient_data in data.ingredients_id:
+            ingredient = await session.get(Ingredient, ingredient_data.ingredient_id)
 
-        if ingredient is None:
-            raise HTTPException(404, "wrong ingredient id")
+            if ingredient is None:
+                raise HTTPException(404, "wrong ingredient id")
 
-        ingredients.append((ingredient, ingredient_data.count))
+            ingredients.append((ingredient, ingredient_data.count))
 
     delattr(data, "ingredients_id")
     position = Position(**data.model_dump())
