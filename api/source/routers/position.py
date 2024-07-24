@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import Ingredient, Position, Position_xref_Ingredient
-from routers.schemas import IngredientPostForPosition, IngredientPostForPositionRead, PositionBase, PositionGet, PositionPatch, PositionPost
+from routers.schemas import (
+    IngredientFull, IngredientPostForPosition, IngredientPostForPositionRead, PositionAvailable, PositionBase,
+    PositionGet, PositionGetFull, PositionId, PositionPatch, PositionPost, PositionWithAvailability, PositionsAvailable
+)
 from db.engine import get_async_session
 
 
@@ -67,7 +70,7 @@ async def get_all_positions(session: AsyncSession = Depends(get_async_session)):
 
     result = []
     for position in positions:
-        query = select(Ingredient.id.label('id'), Ingredient.name.label('name'), Position_xref_Ingredient.count.label('count'))
+        query = select(Ingredient.id, Ingredient.name, Position_xref_Ingredient.count)
         query = query.select_from(Position_xref_Ingredient)
         query = query.join(Ingredient, Position_xref_Ingredient.ingredient_id == Ingredient.id)
         query = query.where(Position_xref_Ingredient.position_id == position.id)
@@ -191,4 +194,90 @@ async def patch_position_ingredients(id: int, data: list[IngredientPostForPositi
             name=struct[0].name,
             count=struct[1]
         ), new_ingredients)
+    )
+
+
+async def get_ingredients_data(position_id: int, session: AsyncSession) -> list[Row]:
+    query = select(Ingredient.id, Ingredient.name, Ingredient.available, Position_xref_Ingredient.count)
+    query = query.select_from(Position_xref_Ingredient)
+    query = query.join(Ingredient, Position_xref_Ingredient.ingredient_id == Ingredient.id)
+    query = query.where(Position_xref_Ingredient.position_id == position_id)
+
+    return (await session.execute(query)).all()
+
+
+@router.get('/availability/{id}', response_model=PositionAvailable)
+async def get_available_position(id: int, session: AsyncSession = Depends(get_async_session)):
+    position = await session.get(Position, id)
+
+    ingredients_data = await get_ingredients_data(position.id, session)
+
+    number: float = float('+inf')
+    available_ingredients: list[IngredientFull] = []
+    unavailable_ingredients: list[IngredientFull] = []
+
+    for ingredient_data in ingredients_data:
+        current = ingredient_data.available // ingredient_data.count
+        ingredient = IngredientFull.model_validate(ingredient_data)
+
+        if current == 0:
+            unavailable_ingredients.append(ingredient)
+        else:
+            available_ingredients.append(ingredient)
+        
+        number = min(number, current)
+    
+    if number == float('inf'):
+        number = -1
+    
+    return PositionAvailable(
+        avalible=number,
+        unavailable_ingredients=unavailable_ingredients,
+        **PositionId.model_validate(position).model_dump()
+    )
+
+
+@router.get('/all/availability', response_model=PositionsAvailable)
+async def get_all_available_position(session: AsyncSession = Depends(get_async_session)):
+    positions = (await session.scalars(select(Position))).all()
+
+    available_positions: list[tuple[Position, int, list[IngredientFull]]] = []
+    unavailable_positions: list[tuple[Position, list[IngredientFull], list[IngredientFull]]] = []
+
+    for position in positions:
+        ingredients_data = await get_ingredients_data(position.id, session)
+
+        number: float = float('+inf')
+        available_ingredients: list[IngredientFull] = []
+        unavailable_ingredients: list[IngredientFull] = []
+
+        for ingredient_data in ingredients_data:
+            current = ingredient_data.available // ingredient_data.count
+            ingredient = IngredientFull.model_validate(ingredient_data)
+
+            if current == 0:
+                unavailable_ingredients.append(ingredient)
+            else:
+                available_ingredients.append(ingredient)
+            
+            number = min(number, current)
+        
+        if number == 0:
+            unavailable_positions.append((position, available_ingredients, unavailable_ingredients))
+        else:
+            if number == float('+inf'):
+                number = -1
+            available_positions.append((position, number, available_ingredients))
+            
+    return PositionsAvailable(
+        available=map(lambda struct: PositionGetFull(
+            available=struct[1],
+            ingredients=struct[2],
+            **PositionId.model_validate(struct[0]).model_dump()
+        ), available_positions),
+        unavailable=map(lambda struct: PositionWithAvailability(
+            available_ingredients=struct[1],
+            unavailable_ingredients=struct[2],
+            **PositionId.model_validate(struct[0]).model_dump()
+        ), unavailable_positions)
     )

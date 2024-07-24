@@ -36,11 +36,11 @@ async def change_ingredient_count(id: int, data: IngredientPatch, session: Async
     if ingredient is None:
         raise HTTPException(404, 'no ingredient with such id')
 
-    if data.count is not None:
-        if data.count < 0:
+    if data.available is not None:
+        if data.available < 0:
             raise HTTPException(400, 'wrong new_count value')
 
-        ingredient.count = data.count
+        ingredient.available = data.available
 
     if data.name is not None:
         ingredient.name = data.name
