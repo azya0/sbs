@@ -15,6 +15,11 @@ router = APIRouter(
 
 @router.post('/', response_model=IngredientGet)
 async def add_new_ingredient(data: IngredientPost, session: AsyncSession = Depends(get_async_session)):
+    already = await session.scalar(select(Ingredient).where(Ingredient.name == data.name))
+
+    if already is not None:
+        raise HTTPException(400, "this ingredient name already used")
+    
     ingredient = Ingredient(**data.model_dump())
 
     session.add(ingredient)

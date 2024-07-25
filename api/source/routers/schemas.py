@@ -1,4 +1,7 @@
-from pydantic import BaseModel, model_validator
+import datetime
+from pydantic import BaseModel, field_validator, model_validator
+
+from db.models import OrderStatus
 
 
 class AtLeastOneValidator:
@@ -50,6 +53,9 @@ class IngredientPostForPositionRead(BaseModel):
 class IngredientPostForPosition(IngredientPostForPositionRead):
     name: str
 
+    class Config:
+        from_attributes = True
+
 
 class IngredientFull(IngredientPostForPosition):
     available: int
@@ -60,18 +66,24 @@ class IngredientFull(IngredientPostForPosition):
 
 class PositionPost(PositionBase):
     is_changable: bool | None = None
-    
-    ingredients_id: list[IngredientPostForPosition] | None = None
+    ingredients_id: list[IngredientPostForPositionRead] | None = None
 
 
 class PositionGet(PositionId):
     ingredients: list[IngredientPostForPosition]
 
 
-class PositionGetFull(PositionId):
-    available: int
-
+class PositionFull(PositionId):
+    count: int
     ingredients: list[IngredientFull]
+
+
+class PositionShort(PositionId):
+    count: int
+
+
+class PositionGetFull(PositionFull):
+    available: int
 
 
 class PositionWithAvailability(PositionId):
@@ -94,3 +106,46 @@ class PositionAvailable(PositionId):
 class PositionsAvailable(BaseModel):
     available: list[PositionGetFull]
     unavailable: list[PositionWithAvailability]
+
+
+class OrderPosition(BaseModel):
+    id: int
+    count: int
+
+    @field_validator('count')
+    @classmethod
+    def count_checker(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("count can't be zero or lower")
+        return value
+
+
+class PositionInOrder(PositionId):
+    count: int
+
+
+class OrderBase(BaseModel):
+    id: int
+    table_id: int
+    status: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    ended_at: datetime.datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class OrderPatch(BaseModel, AtLeastOneValidator):
+    table_id: int | None = None
+    status: OrderStatus | None = None
+    ended_at: datetime.datetime | None = None
+
+
+class OrderGet(OrderBase):
+    cost: int
+    positions: list[PositionFull]
+
+
+class OrderGetShort(OrderGet):
+    positions: list[PositionShort]

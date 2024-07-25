@@ -1,6 +1,7 @@
 import datetime
+import enum
 
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, func
+from sqlalchemy import Column, Enum, String, Integer, Boolean, ForeignKey, DateTime, func
 from sqlalchemy.orm import as_declarative, relationship
 
 
@@ -39,19 +40,26 @@ class Position_xref_Ingredient(Base):
     count = Column(Integer, nullable=False)
 
 
+class OrderStatus(str, enum.Enum):
+    ACCEPTED = "ACCEPTED"
+    PROGRESS = "PROGRESS"
+    READY = "READY"
+    ISSUED = "ISSUED"
+
+
 class Order(Base):
     __tablename__ = 'order'
 
     table_id = Column(Integer, nullable=False)
-    is_ready = Column(Boolean, default=False)
-    created_at = Column(DateTime, server_default=func.now())
+    status = Column(Enum(OrderStatus), default=OrderStatus.ACCEPTED, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         server_default=func.now(),
         server_onupdate=func.now(),
         onupdate=datetime.datetime.now
     )
-    ended_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
 
     positions = relationship('Position', secondary='position_xref_order', back_populates='orders', uselist=True)
 
@@ -61,3 +69,4 @@ class Position_xref_Order(Base):
 
     order_id = Column(Integer, ForeignKey('order.id'), index=True, nullable=False)
     position_id = Column(Integer, ForeignKey('position.id'), nullable=False)
+    count = Column(Integer, nullable=False)

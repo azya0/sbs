@@ -27,7 +27,7 @@ async def add_new_position(data: PositionPost, session: AsyncSession = Depends(g
     ingredients: list[tuple[Ingredient, int]] = []
     if data.ingredients_id is not None and len(data.ingredients_id):
         for ingredient_data in data.ingredients_id:
-            ingredient = await session.get(Ingredient, ingredient_data.ingredient_id)
+            ingredient = await session.get(Ingredient, ingredient_data.id)
 
             if ingredient is None:
                 raise HTTPException(404, "wrong ingredient id")
@@ -58,7 +58,8 @@ async def add_new_position(data: PositionPost, session: AsyncSession = Depends(g
         is_changable=position.is_changable,
         cost=position.cost,
         ingredients=map(lambda pair: IngredientPostForPosition(
-            ingredient_id=pair[0].id,
+            id=pair[0].id,
+            name=pair[0].name,
             count=pair[1]
         ), ingredients)
     )
@@ -104,9 +105,9 @@ async def delete_position(id: int, session: AsyncSession = Depends(get_async_ses
     await session.delete(position)
 
 
-@router.patch('/{id}', response_model=PositionGet)
+@router.patch('/{id}', response_model=PositionId)
 async def patch_position(id: int, data: PositionPatch, session: AsyncSession = Depends(get_async_session)):
-    position = await session.get(Position, id, options=(selectinload(Position.ingredients), ))
+    position = await session.get(Position, id)
 
     if position is None:
         raise HTTPException(404, "no position with such id")
@@ -117,9 +118,10 @@ async def patch_position(id: int, data: PositionPatch, session: AsyncSession = D
     session.add(position)
     await session.commit()
 
-    result = PositionGet.model_validate(position)
+    result = PositionId.model_validate(position)
 
     return result
+
 
 @router.put('/{id}/ingredients', response_model=PositionGet)
 async def patch_position_ingredients(id: int, data: list[IngredientPostForPositionRead], session: AsyncSession = Depends(get_async_session)):
@@ -197,7 +199,7 @@ async def patch_position_ingredients(id: int, data: list[IngredientPostForPositi
     )
 
 
-async def get_ingredients_data(position_id: int, session: AsyncSession) -> list[Row]:
+async def get_position_data(position_id: int, session: AsyncSession) -> list[Row]:
     query = select(Ingredient.id, Ingredient.name, Ingredient.available, Position_xref_Ingredient.count)
     query = query.select_from(Position_xref_Ingredient)
     query = query.join(Ingredient, Position_xref_Ingredient.ingredient_id == Ingredient.id)
@@ -206,12 +208,7 @@ async def get_ingredients_data(position_id: int, session: AsyncSession) -> list[
     return (await session.execute(query)).all()
 
 
-@router.get('/availability/{id}', response_model=PositionAvailable)
-async def get_available_position(id: int, session: AsyncSession = Depends(get_async_session)):
-    position = await session.get(Position, id)
-
-    ingredients_data = await get_ingredients_data(position.id, session)
-
+async def sort_ingredient_data(ingredients_data: list[Row]) -> tuple[list[IngredientFull], list[IngredientFull], int]:
     number: float = float('+inf')
     available_ingredients: list[IngredientFull] = []
     unavailable_ingredients: list[IngredientFull] = []
@@ -229,7 +226,21 @@ async def get_available_position(id: int, session: AsyncSession = Depends(get_as
     
     if number == float('inf'):
         number = -1
-    
+
+    return available_ingredients, unavailable_ingredients, int(number)
+
+
+@router.get('/availability/{id}', response_model=PositionAvailable)
+async def get_available_position(id: int, session: AsyncSession = Depends(get_async_session)):
+    position = await session.get(Position, id)
+
+    if position is None:
+        raise HTTPException(400, 'no position with such id')
+
+    ingredients_data = await get_position_data(position.id, session)
+
+    _, unavailable_ingredients, number = await sort_ingredient_data(ingredients_data)
+
     return PositionAvailable(
         avalible=number,
         unavailable_ingredients=unavailable_ingredients,
@@ -245,30 +256,15 @@ async def get_all_available_position(session: AsyncSession = Depends(get_async_s
     unavailable_positions: list[tuple[Position, list[IngredientFull], list[IngredientFull]]] = []
 
     for position in positions:
-        ingredients_data = await get_ingredients_data(position.id, session)
+        ingredients_data = await get_position_data(position.id, session)
 
-        number: float = float('+inf')
-        available_ingredients: list[IngredientFull] = []
-        unavailable_ingredients: list[IngredientFull] = []
-
-        for ingredient_data in ingredients_data:
-            current = ingredient_data.available // ingredient_data.count
-            ingredient = IngredientFull.model_validate(ingredient_data)
-
-            if current == 0:
-                unavailable_ingredients.append(ingredient)
-            else:
-                available_ingredients.append(ingredient)
-            
-            number = min(number, current)
+        available_ingredients, unavailable_ingredients, number = await sort_ingredient_data(ingredients_data)
         
         if number == 0:
             unavailable_positions.append((position, available_ingredients, unavailable_ingredients))
         else:
-            if number == float('+inf'):
-                number = -1
             available_positions.append((position, number, available_ingredients))
-            
+
     return PositionsAvailable(
         available=map(lambda struct: PositionGetFull(
             available=struct[1],

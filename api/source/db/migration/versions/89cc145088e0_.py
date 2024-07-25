@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: c4db666b17c7
+Revision ID: 89cc145088e0
 Revises: 
-Create Date: 2024-07-23 10:44:21.826030
+Create Date: 2024-07-25 12:25:52.383082
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c4db666b17c7'
+revision: str = '89cc145088e0'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,10 +30,10 @@ def upgrade() -> None:
     op.create_index(op.f('ix_ingredient_id'), 'ingredient', ['id'], unique=False)
     op.create_table('order',
     sa.Column('table_id', sa.Integer(), nullable=False),
-    sa.Column('is_ready', sa.Boolean(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
-    sa.Column('ended_at', sa.DateTime(), nullable=True),
+    sa.Column('status', sa.Enum('ACCEPTED', 'PROGRESS', 'READY', 'ISSUED', name='orderstatus'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('ended_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('id', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
@@ -62,6 +62,7 @@ def upgrade() -> None:
     op.create_table('position_xref_order',
     sa.Column('order_id', sa.Integer(), nullable=False),
     sa.Column('position_id', sa.Integer(), nullable=False),
+    sa.Column('count', sa.Integer(), nullable=False),
     sa.Column('id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['order_id'], ['order.id'], ),
     sa.ForeignKeyConstraint(['position_id'], ['position.id'], ),
